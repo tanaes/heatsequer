@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 """
 heatsequer full gui
 """
@@ -22,12 +21,21 @@ import os.path
 import numpy as np
 
 
+class CleanTaxonomyWindow(QtGui.QDialog):
+	cexp=[]
+
+	def __init__(self,expdat):
+		super(CleanTaxonomyWindow, self).__init__()
+		uic.loadUi(hs.get_data_path('cleantaxonomy.py','ui'), self)
+		self.cexp=expdat
+
+
 class JoinWindow(QtGui.QDialog):
 	cexp=[]
 
 	def __init__(self,expdat):
 		super(JoinWindow, self).__init__()
-		uic.loadUi('./ui/joinfields.py', self)
+		uic.loadUi(hs.get_data_path('joinfields.py','ui'), self)
 		self.cexp=expdat
 		self.cField1.addItems(expdat.fields)
 		self.cField2.addItems(expdat.fields)
@@ -39,7 +47,7 @@ class MetaDataDetailsWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(MetaDataDetailsWindow, self).__init__()
-		uic.loadUi('./ui/metadatadetails.py', self)
+		uic.loadUi(hs.get_data_path('metadatadetails.py','ui'), self)
 		self.cexp=expdat
 		self.bFieldValues.clicked.connect(self.values)
 		self.cField.addItems(expdat.fields)
@@ -57,7 +65,7 @@ class MetaDataWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(MetaDataWindow, self).__init__()
-		uic.loadUi('./ui/plotmetadata.py', self)
+		uic.loadUi(hs.get_data_path('plotmetadata.py','ui'), self)
 		self.cexp=expdat
 		self.mddict={}
 		for cmeta in expdat.plotmetadata:
@@ -112,7 +120,7 @@ class BiClusterWindow(QtGui.QDialog):
 
 	def __init__(self,expdat,cdb=False,bdb=False):
 		super(BiClusterWindow, self).__init__()
-		uic.loadUi('./ui/bicluster.py', self)
+		uic.loadUi(hs.get_data_path('bicluster.py','ui'), self)
 		self.cexp=expdat
 		self.cooldb=cdb
 		self.bactdb=bdb
@@ -191,7 +199,7 @@ class AdvPlotWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(AdvPlotWindow, self).__init__()
-		uic.loadUi('./ui/advplot.py', self)
+		uic.loadUi(hs.get_data_path('advplot.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bOK.clicked.connect(self.OK)
@@ -230,7 +238,7 @@ class SortSamplesWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(SortSamplesWindow, self).__init__()
-		uic.loadUi('./ui/sortsamples.py', self)
+		uic.loadUi(hs.get_data_path('sortsamples.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bOK.clicked.connect(self.OK)
@@ -264,7 +272,7 @@ class DiffExpWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(DiffExpWindow, self).__init__()
-		uic.loadUi('./ui/diffexp.py', self)
+		uic.loadUi(hs.get_data_path('diffexp.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bFieldValues1.clicked.connect(self.fieldvalues1)
@@ -296,12 +304,29 @@ class DiffExpWindow(QtGui.QDialog):
 			self.tValue2.setReadOnly(True)
 
 
+class FilterSimilarSamplesWindow(QtGui.QDialog):
+	cexp=[]
+
+	def __init__(self,expdat):
+		super(FilterSimilarSamplesWindow, self).__init__()
+		uic.loadUi(hs.get_data_path('filtersimilarsamples.py','ui'), self)
+		self.cexp=expdat
+		self.cField.addItems(expdat.fields)
+		self.bFieldValues1.clicked.connect(self.fieldvalues1)
+		self.tNewName.setText(self.cexp.studyname+'_fss')
+
+
+	def fieldvalues1(self):
+		cfield=str(self.cField.currentText())
+		val,ok=QtGui.QInputDialog.getItem(self,'Select field value','Field=%s' % cfield,list(set(hs.getfieldvals(self.cexp,cfield))))
+
+
 class CorrelationWindow(QtGui.QDialog):
 	cexp=[]
 
 	def __init__(self,expdat):
 		super(CorrelationWindow, self).__init__()
-		uic.loadUi('./ui/correlation.py', self)
+		uic.loadUi(hs.get_data_path('correlation.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bFieldValues1.clicked.connect(self.fieldvalues1)
@@ -318,7 +343,7 @@ class ClassifyWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(ClassifyWindow, self).__init__()
-		uic.loadUi('./ui/classifier.py', self)
+		uic.loadUi(hs.get_data_path('classifier.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bFieldValues1.clicked.connect(self.fieldvalues1)
@@ -355,7 +380,7 @@ class FilterSamplesWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(FilterSamplesWindow, self).__init__()
-		uic.loadUi('./ui/filtersamples.py', self)
+		uic.loadUi(hs.get_data_path('filtersamples.py','ui'), self)
 		self.cexp=expdat
 		self.cField.addItems(expdat.fields)
 		self.bOK.clicked.connect(self.OK)
@@ -390,7 +415,7 @@ class FilterSamplesWindow(QtGui.QDialog):
 class FilterFastaWindow(QtGui.QDialog):
 	def __init__(self):
 		super(FilterFastaWindow, self).__init__()
-		uic.loadUi('./ui/filterfasta.py', self)
+		uic.loadUi(hs.get_data_path('filterfasta.py','ui'), self)
 		self.bBrowse.clicked.connect(self.browse)
 
 	def browse(self):
@@ -401,7 +426,7 @@ class FilterFastaWindow(QtGui.QDialog):
 class LoadWindow(QtGui.QDialog):
 	def __init__(self):
 		super(LoadWindow, self).__init__()
-		uic.loadUi('./ui/load.py', self)
+		uic.loadUi(hs.get_data_path('load.py','ui'), self)
 		self.bLoadBrowseTable.clicked.connect(self.browsetable)
 		self.bLoadBrowseMap.clicked.connect(self.browsemap)
 		self.bLoadLoad.clicked.connect(self.load)
@@ -436,7 +461,7 @@ class ListWindow(QtGui.QDialog):
 		listname - name to display above the list
 		"""
 		super(ListWindow, self).__init__()
-		uic.loadUi('./ui/listwindow.py', self)
+		uic.loadUi(hs.get_data_path('listwindow.py','ui'), self)
 		for citem in listdata:
 			self.lList.addItem(citem)
 		if listname:
@@ -450,7 +475,7 @@ class AppWindow(QtGui.QMainWindow):
 
 	def __init__(self):
 		super(AppWindow, self).__init__()
-		uic.loadUi('./ui/appwindow.py', self)
+		uic.loadUi(hs.get_data_path('appwindow.py','ui'), self)
 		self.bMainLoadNew.clicked.connect(self.load)
 		self.bPickleLoad.clicked.connect(self.pickleload)
 		self.bMainPlot.clicked.connect(self.plot)
@@ -458,12 +483,14 @@ class AppWindow(QtGui.QMainWindow):
 		self.bMainFilterSamples.clicked.connect(self.filtersamples)
 		self.bDiffExp.clicked.connect(self.diffexp)
 		self.bCorrelation.clicked.connect(self.correlation)
+		self.bFilterSimilarSamples.clicked.connect(self.filtersimilarsamples)
 		self.bClassifier.clicked.connect(self.classify)
 		self.bFilterOrigReads.clicked.connect(self.filterorigreads)
 		self.bMainSortSamples.clicked.connect(self.sortsamples)
 		self.bMainClusterBacteria.clicked.connect(self.clusterbacteria)
 		self.bMainFilterMinReads.clicked.connect(self.filterminreads)
 		self.bMainFilterTaxonomy.clicked.connect(self.filtertaxonomy)
+		self.bFilterAnnotation.clicked.connect(self.filterannotation)
 		self.bFilterPresence.clicked.connect(self.filterpresence)
 		self.bFilterMean.clicked.connect(self.filtermean)
 		self.bSortAbundance.clicked.connect(self.sortabundance)
@@ -473,7 +500,9 @@ class AppWindow(QtGui.QMainWindow):
 		self.bEnrichment.clicked.connect(self.enrichment)
 		self.bFilterFasta.clicked.connect(self.filterfasta)
 		self.bRenormalize.clicked.connect(self.renormalize)
+		self.bCleanTaxonomy.clicked.connect(self.cleantaxonomy)
 		self.bSubsample.clicked.connect(self.subsample)
+		self.cDebugMode.stateChanged.connect(self.debugmode)
 
 
 		# the main list right mouse menu
@@ -485,12 +514,18 @@ class AppWindow(QtGui.QMainWindow):
 		self.cooldb=False
 		try:
 			hs.Debug(6,'Connecting to sequence database')
-			self.bactdb=hs.bactdb.dbstart()
+			bdbpath=hs.get_data_path('SRBactDB.db','db')
+			hs.Debug(6,'From %s' % bdbpath)
+			self.bactdb=hs.bactdb.dbstart(bdbpath)
+			hs.Debug(6,'Sequence database connected')
 		except:
 			hs.Debug(9,'sequence database file not found')
 		try:
 			hs.Debug(6,'Loading coolseq database')
-			self.cooldb=hs.cooldb.loaddb()
+			cdbpath=hs.get_data_path('coolseqs.txt','db')
+			hs.Debug(6,'From %s' % cdbpath)
+			self.cooldb=hs.cooldb.loaddb(cdbpath)
+			hs.Debug(6,'coolseq database loaded')
 		except:
 			hs.Debug(9,'CoolDB file not found')
 
@@ -761,6 +796,26 @@ class AppWindow(QtGui.QMainWindow):
 					newexp=hs.getdiffsig(cexp,field,value1,value2,method=method)
 				if newexp:
 					newexp.studyname=newname+'_'+field
+					self.addexp(newexp)
+
+
+	def filtersimilarsamples(self):
+		items=self.bMainList.selectedItems()
+		if len(items)!=1:
+			print("Need 1 item")
+			return
+		for citem in items:
+			cname=str(citem.text())
+			cexp=self.explist[cname]
+			filtersimsampwin = FilterSimilarSamplesWindow(cexp)
+			res=filtersimsampwin.exec_()
+			if res==QtGui.QDialog.Accepted:
+				field=str(filtersimsampwin.cField.currentText())
+				newname=str(filtersimsampwin.tNewName.text())
+				method=str(filtersimsampwin.cMethod.currentText())
+				newexp=hs.filtersimilarsamples(cexp,field=field,method=method)
+				if newexp:
+					newexp.studyname=newname
 					self.addexp(newexp)
 
 
@@ -1045,6 +1100,22 @@ class AppWindow(QtGui.QMainWindow):
 				newexp.studyname=newexp.studyname+'_ftax'
 				self.addexp(newexp)
 
+
+	def filterannotation(self):
+		items=self.bMainList.selectedItems()
+		if len(items)!=1:
+			print("Need 1 item")
+			return
+		for citem in items:
+			cname=str(citem.text())
+			cexp=self.explist[cname]
+			val,ok=QtGui.QInputDialog.getText(self,'Filter annotation','Annotation to filter')
+			if ok:
+				newexp=hs.filterannotations(cexp,str(val),cdb=self.cooldb)
+				newexp.studyname=newexp.studyname+'_fan'
+				self.addexp(newexp)
+
+
 	def renormalize(self):
 		items=self.bMainList.selectedItems()
 		if len(items)!=1:
@@ -1056,6 +1127,42 @@ class AppWindow(QtGui.QMainWindow):
 			newexp=hs.normalizereads(cexp)
 			newexp.studyname=newexp.studyname+'_norm'
 			self.addexp(newexp)
+
+
+	def cleantaxonomy(self):
+		items=self.bMainList.selectedItems()
+		if len(items)!=1:
+			print("Need 1 item")
+			return
+		for citem in items:
+			cname=str(citem.text())
+			cexp=self.explist[cname]
+			ctwin = CleanTaxonomyWindow(cexp)
+			res=ctwin.exec_()
+			if res==QtGui.QDialog.Accepted:
+				newexp=hs.copyexp(cexp)
+				if ctwin.cMitochondria.checkState():
+					newexp=hs.filtertaxonomy(newexp,'mitochondria',exclude=True)
+				if ctwin.cChloroplast.checkState():
+					newexp=hs.filtertaxonomy(newexp,'Streptophyta',exclude=True)
+					newexp=hs.filtertaxonomy(newexp,'Chloroplast',exclude=True)
+				if ctwin.cUnknown.checkState():
+					newexp=hs.filtertaxonomy(newexp,'nknown',exclude=True)
+				if ctwin.cBacteria.checkState():
+					newexp=hs.filtertaxonomy(newexp,'Bacteria;',exclude=True,exact=True)
+				newexp=hs.normalizereads(newexp)
+				newexp.studyname=cexp.studyname+'.ct'
+				self.addexp(newexp)
+
+
+	def debugmode(self):
+		# unchecked
+		if self.cDebugMode.checkState()==0:
+			hs.Debug(9,"Debug mode off")
+			hs.amnonutils.DebugLevel=5
+		else:
+			hs.Debug(9,"Debug mode on")
+			hs.amnonutils.DebugLevel=0
 
 
 def main():

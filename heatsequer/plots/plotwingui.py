@@ -63,7 +63,8 @@ class PlotGUIWindow(QtGui.QDialog):
 
 	def __init__(self,expdat):
 		super(PlotGUIWindow, self).__init__()
-		uic.loadUi('ui/plotguiwindow.py', self)
+		uic.loadUi(hs.get_data_path('plotguiwindow.py','ui'), self)
+#		uic.loadUi('ui/plotguiwindow.py', self)
 		self.bGetSequence.clicked.connect(self.getsequence)
 		self.bExport.clicked.connect(self.export)
 		self.bView.clicked.connect(self.view)
@@ -183,22 +184,28 @@ class PlotGUIWindow(QtGui.QDialog):
 		"""
 		check for annotation enrichment for selected sequences (compared to other sequences in this experiment)
 		"""
-		if self.cexp.cooldb:
-			selseqs=[]
-			for cid in self.selection:
-				selseqs.append(self.cexp.seqs[cid])
-			bmd=hs.cooldb.testenrichment(self.cexp.cooldb,self.cexp.seqs,selseqs)
+		if not self.cexp.cdb:
+			hs.Debug(8,'No cooldb loaded')
+			return		
+		selseqs=[]
+		for cid in self.selection:
+			selseqs.append(self.cexp.seqs[cid])
+		bmd=hs.cooldb.testenrichment(self.cexp.cdb,self.cexp.seqs,selseqs)
+		hs.Debug(6,'found %d items' % len(bmd))
+		if len(bmd)>0:
+			slistwin = SListWindow(listname='Enrichment')
 			bmd=hs.sortenrichment(bmd)
 			for cbmd in bmd:
-				# if cbmd['observed']<cbmd['expected']:
-				# 	ccolor=QtGui.QColor(155,0,0)
-				# else:
-				# 	ccolor=QtGui.QColor(0,155,0)
-				# item = QtGui.QListWidgetItem()
-				# item.setText("%s (p:%f o:%d e:%f)" % (cbmd['description'],cbmd['pval'],cbmd['observed'],cbmd['expected']))
-				# item.setTextColor(ccolor)
-				# self.lBacteria.addItem(item)
+				if cbmd['observed']<cbmd['expected']:
+					ccolor=QtGui.QColor(155,0,0)
+				else:
+					ccolor=QtGui.QColor(0,155,0)
+				item = QtGui.QListWidgetItem()
+				item.setText("%s (p:%f o:%d e:%f)" % (cbmd['description'],cbmd['pval'],cbmd['observed'],cbmd['expected']))
+				item.setTextColor(ccolor)
+				slistwin.lList.addItem(item)
 				print("%s (p:%f o:%d e:%f)" % (cbmd['description'],cbmd['pval'],cbmd['observed'],cbmd['expected']))
+			slistwin.exec_()
 
 
 	def save(self):
@@ -241,7 +248,7 @@ class PlotGUIWindow(QtGui.QDialog):
 			if totappear>0:
 				self.lNumSamples.setText(str('%d/%dK' % (totappear,int(totdbsamples/1000))))
 				self.lNumStudies.setText(str(numstudies))
-				res=studysamples.items()
+				res=list(studysamples.items())
 				vlens=[]
 				for cv in res:
 					totsamps=hs.bactdb.SamplesInStudy(self.cexp.seqdb,cv[0])
@@ -250,6 +257,9 @@ class PlotGUIWindow(QtGui.QDialog):
 				for cind in si:
 					studyname=hs.bactdb.StudyNameFromID(self.cexp.seqdb,res[cind][0])
 					self.lStudies.addItem('%s (%f)' % (studyname,vlens[cind]))
+			else:
+				self.lNumSamples.setText(str('%d/%dK' % (0,int(totdbsamples/1000))))
+				self.lNumStudies.setText("0")
 		if self.FigureTab.currentIndex()==2:
 			self.plotxgraph()
 		if self.FigureTab.currentIndex()==1:
@@ -286,7 +296,7 @@ class PlotGUIWindow(QtGui.QDialog):
 
 	def clearselection(self,seqlist=False):
 		if not seqlist:
-			seqlist=self.selectionlines.keys()
+			seqlist=list(self.selectionlines.keys())
 		for cseq in seqlist:
 			cline=self.selectionlines[cseq]
 			self.plotax.lines.remove(cline[0])

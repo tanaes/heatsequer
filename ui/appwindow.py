@@ -71,7 +71,7 @@
      <rect>
       <x>30</x>
       <y>60</y>
-      <width>256</width>
+      <width>291</width>
       <height>192</height>
      </rect>
     </property>
@@ -102,7 +102,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>0</number>
     </property>
     <widget class="QWidget" name="tab">
      <attribute name="title">
@@ -184,6 +184,19 @@
       </property>
       <property name="text">
        <string>Subsample</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="bFilterSimilarSamples">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>180</y>
+        <width>121</width>
+        <height>32</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Filter SimSamp</string>
       </property>
      </widget>
     </widget>
@@ -272,9 +285,9 @@
      <widget class="QPushButton" name="bRenormalize">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>190</y>
-        <width>121</width>
+        <x>120</x>
+        <y>40</y>
+        <width>131</width>
         <height>32</height>
        </rect>
       </property>
@@ -293,6 +306,32 @@
       </property>
       <property name="text">
        <string>Sort Abundance</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="bFilterAnnotation">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>190</y>
+        <width>121</width>
+        <height>32</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Filter Annotation</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="bCleanTaxonomy">
+      <property name="geometry">
+       <rect>
+        <x>120</x>
+        <y>70</y>
+        <width>131</width>
+        <height>32</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Clean Taxonomy</string>
       </property>
      </widget>
     </widget>
@@ -366,6 +405,19 @@
       </property>
      </widget>
     </widget>
+   </widget>
+   <widget class="QCheckBox" name="cDebugMode">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>101</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Debug mode</string>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">

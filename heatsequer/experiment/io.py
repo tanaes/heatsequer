@@ -18,7 +18,7 @@ import os
 from pdb import set_trace as XXX
 
 
-def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=False,tabletype='biom',normalize=True,addsname=''):
+def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=False,tabletype='biom',normalize=True,addsname='',keepzero=False,removefrom=False):
 	"""
 	Load an experiment - a biom table and a mapping file
 	input:
@@ -33,6 +33,10 @@ def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=Fals
 		'biom' - a biom table
 		'meta' - a metabolomics table (row per sample, col per metabolite, can contain duplicate metaboliteids)
 	normalize - True to normalize to 10k reads per sample, False to not normalize (change to mean 10k reads/sample)
+	keepzero : bool
+		True (default) to keep samples with 0 reads, False to throw away
+	removefrom : string
+		if non empty - cut table sample name after (and including) the first occurance of removefrom
 	output:
 	an experiment class for the current experiment
 	"""
@@ -49,6 +53,26 @@ def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=Fals
 	else:
 		hs.Debug(9,'Table type %s not supported' % tabletype)
 		return False
+
+	# if need to cut table sample names
+	if removefrom:
+		idtable={}
+		foundids={}
+		ids=table.ids(axis='sample')
+		for cid in ids:
+			if removefrom in cid:
+				tid=cid[:cid.find(removefrom)]
+			else:
+				hs.Debug(6,'%s not found in sample name %s (removefrom)' % (removefrom,cid))
+				tid=cid
+			if tid in foundids:
+				hs.Debug(6,'already have id %s' % cid)
+				idtable[cid]=tid+str(foundids[tid])
+				foundids[tid]+=1
+			else:
+				foundids[tid]=1
+				idtable[cid]=tid
+		table=table.update_ids(idtable,axis='sample')
 
 	# if need to add constant string to sample names in table
 	if addsname!='':
@@ -82,25 +106,30 @@ def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=Fals
 			removelist.append(cid)
 			hs.Debug(6,'Table sample %s not found in mapping file' % cid)
 	hs.Debug(6,'removing %s samples' % len(removelist))
-	table=table.filter(removelist,axis='sample',invert=True)
+	if len(removelist)>0:
+		table=table.filter(removelist,axis='sample',invert=True)
 
 	tablesamples = table.ids(axis='sample')
 	hs.Debug(6,'deleted. number of samples in table is now %d' % len(tablesamples))
 
 	# remove samples not in table from mapping file
 	removemap=[]
+	addlist=[]
 	for idx,cmap in enumerate(mapsamples):
 		if cmap not in tablesamples:
-			removemap.append(idx)
-			try:
-				del smap[cmap]
-			except:
-				hs.Debug(8,'Duplicate SampleID %s in mapping file' % cmap)
+			hs.Debug(2,'Map sample %s not in table' % cmap)
+			if not keepzero:
+				removemap.append(idx)
+				try:
+					del smap[cmap]
+				except:
+					hs.Debug(8,'Duplicate SampleID %s in mapping file' % cmap)
+			else:
+				addlist.append(cmap)
 	if len(removemap)>0:
 		hs.Debug(7,'removing %d samples from mapping file' % len(removemap))
 		mapsamples=hs.delete(mapsamples,removemap)
 	hs.Debug(7,'number of samples in mapping file is now %d' % len(mapsamples))
-
 
 	# get info about the sequences
 	tableseqs = table.ids(axis='observation')
@@ -125,6 +154,11 @@ def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=Fals
 	exp=hs.Experiment()
 	exp.datatype=tabletype
 	exp.data=table.matrix_data.todense().A
+	# check if need to add the 0 read samples to the data
+	if len(addlist)>0:
+		tablesamples=list(tablesamples)
+		tablesamples=tablesamples+addlist
+		exp.data=np.hstack([exp.data,np.zeros([np.shape(exp.data)[0],len(addlist)])])
 	exp.smap=smap
 	exp.samples=tablesamples
 	exp.seqs=tableseqs
@@ -150,7 +184,8 @@ def load(tablename, mapname='map.txt', taxfile='', nameisseq=True,studyname=Fals
 	okreads=np.where(colsum>0)
 	if np.size(colsum)-np.size(okreads[1])>0:
 		print("Samples with 0 reads: %d" % (np.size(colsum)-np.size(okreads[1])))
-		exp=hs.reordersamples(exp,okreads[1])
+		if not keepzero:
+			exp=hs.reordersamples(exp,okreads[1])
 		colsum=np.sum(exp.data,axis=0,keepdims=True)
 	if tabletype=='meta':
 		normalize=False
@@ -237,8 +272,19 @@ def gettaxfromtable(table,seq):
 		if 'taxonomy' in md:
 			tax = md['taxonomy']
 			if not isinstance(tax,str):
-				tax=[x[3:] if x[2]=='_' else x for x in tax]
-				tax = ';'.join(tax)
+				newtax=''
+				for x in tax:
+					if len(x)>2:
+						if x[2]=='_':
+							newtax+=x[3:]
+						else:
+							newtax+=x
+					else:
+						newtax+=x
+					newtax+=';'
+#					tax=[x[3:] if x[2]=='_' else x for x in tax]
+#					tax = ';'.join(tax)
+				tax=newtax
 	return tax
 
 
@@ -341,12 +387,31 @@ def saveexpseqs(expdat,filename):
 	hs.saveseqsfasta(expdat,expdat.seqs,filename)
 
 
-def savebiom(expdat,filename):
-	"""
-	save experiment to text biom table and mapping file
-	"""
-	mapfilename=filename+'.map.txt'
-	mf=open(mapfilename,'w')
+# def savebiom(expdat,filename):
+# 	"""
+# 	save experiment to text biom table and mapping file
+# 	DEPRACATED - use savetobiom instead!
+# 	"""
+# 	savemap(expdat,filename+'.map.txt')
+# 	tablefilename=filename+'.table.txt'
+# 	tf=open(tablefilename,'w')
+# 	tf.write('# Saved biom table from python analysis\n')
+# 	tf.write('#OTUID')
+# 	for csamp in expdat.samples:
+# 		tf.write('\t%s' % csamp)
+# 	tf.write('\ttaxonomy\n')
+# 	for idxseq,cseq in enumerate(expdat.seqs):
+# 		tf.write('%s' % cseq)
+# 		for idx,csamp in enumerate(expdat.samples):
+# 			tf.write('\t%d' % expdat.data[idxseq,idx])
+# 		tf.write('\t%s\n' % expdat.tax[idxseq])
+# 	tf.close()
+# 	hs.Debug(6,'Saved experiment to biom table %s and mapping %s' % (tablefilename,mapfilename))
+
+
+def savemap(expdat,filename):
+	hs.Debug(1,"Saving mapping file %s" % filename)
+	mf=open(filename,'w')
 	mf.write('#SampleID')
 	for cfield in expdat.fields:
 		if cfield=='#SampleID':
@@ -359,25 +424,9 @@ def savebiom(expdat,filename):
 			if cfield=='#SampleID':
 				continue
 			mf.write('\t')
-#			print(csamp,cfield,expdat.smap[csamp][cfield])
 			mf.write(str(expdat.smap[csamp][cfield]))
 		mf.write('\n')
 	mf.close()
-
-	tablefilename=filename+'.table.txt'
-	tf=open(tablefilename,'w')
-	tf.write('# Saved biom table from python analysis\n')
-	tf.write('#OTUID')
-	for csamp in expdat.samples:
-		tf.write('\t%s' % csamp)
-	tf.write('\ttaxonomy\n')
-	for idxseq,cseq in enumerate(expdat.seqs):
-		tf.write('%s' % cseq)
-		for idx,csamp in enumerate(expdat.samples):
-			tf.write('\t%d' % expdat.data[idxseq,idx])
-		tf.write('\t%s\n' % expdat.tax[idxseq])
-	tf.close()
-	hs.Debug(6,'Saved experiment to biom table %s and mapping %s' % (tablefilename,mapfilename))
 
 
 def savetsvtable(expdat,filename,logtransform=True):
@@ -526,3 +575,69 @@ def loadmap(mapfilename,sampidfield='#SampleID'):
 	mapf.close()
 	hs.Debug(6,'number of samples in map is %d' % len(mapsamples))
 	return mapsamples,smap,fields
+
+
+
+def createbiomtablefromexp(expdat,addtax=True):
+	"""
+	Create a biom table from an experiment
+	input:
+	expdat : Experiment
+	addtax : bool
+		True to add taxonomy metadata, False to not add
+
+	output:
+	table - the biom table (with taxonomy)
+	"""
+
+	# init the table
+	table=biom.table.Table(expdat.data,expdat.seqs,expdat.samples,type="OTU table")
+	# and add metabolite name as taxonomy:
+	if addtax:
+		taxdict={}
+		for idx,cseq in enumerate(expdat.seqs):
+			ctax=str(expdat.tax[idx])
+			if len(ctax)==0:
+				ctax='NA'
+			taxs=ctax.split(';')
+			taxdict[cseq]={'taxonomy': taxs}
+		table.add_metadata(taxdict,axis='observation')
+	return table
+
+
+def savetobiom(expdat,filename,format='hdf5',addtax=True,useorigreads=True):
+	"""
+	Save an experiment to a biom table
+	input:
+	expdat : Experiment
+	filename : string
+		Name of the file to save to
+	format : string
+		Format of the file ('hdf5','json','txt')
+	addtax : bool
+		True to add taxonomy metadata, False to not add
+	useorigreads : bool
+		True (default) to use original number of reads, False to use normalized (sum=10k)
+	"""
+	savemap(expdat,filename+'.map.txt')
+	hs.Debug(1,'Saving biom table %s' % filename)
+	if useorigreads:
+		newexp=hs.toorigreads(expdat)
+	else:
+		newexp=expdat
+	tab=createbiomtablefromexp(newexp,addtax=addtax)
+	if format=='hdf5':
+		with biom.util.biom_open(filename, 'w') as f:
+			tab.to_hdf5(f, "heatsequer")
+	elif format=='json':
+		with open(filename,'w') as f:
+			tab.to_json("heatsequer",f)
+	elif format=='txt':
+		s=tab.to_tsv()
+		with open(filename,'w') as f:
+			f.write(s)
+	else:
+		hs.Debug(9,'file format not supported')
+		return
+	hs.Debug(6,'table saved to file %s' % filename)
+	return

@@ -17,6 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import biom
 from matplotlib.pyplot import *
+from networkx.drawing.nx_agraph import graphviz_layout
 import csv
 #from scipy import cluster
 #from scipy import spatial
@@ -29,8 +30,9 @@ from pdb import set_trace as XXX
 from scipy import stats
 
 
-def initdb(dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
-	db=dbstart()
+#def initdb(dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
+def initdb(dbname="db/SRBactDB.db"):
+	db=dbstart(dbname)
 	db=initontologies(db)
 	return db
 
@@ -77,7 +79,8 @@ def initontologies(db):
 	return db
 
 
-def dbconnect(db,dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
+#def dbconnect(db,dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
+def dbconnect(db,dbname="db/SRBactDB.db"):
 	"""
 	connect to the database
 	input:
@@ -92,6 +95,17 @@ def dbconnect(db,dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
 	Debug(1,"Connected")
 	# and the cursor
 	db.cur=db.con.cursor()
+	# test if the database file exists:
+	try:
+		db.cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='Reads'")
+		istable=db.cur.fetchone()
+		if istable[0]==0:
+			Debug(9,"Can't find Reads table in database file %s" % dbname)
+			db=False
+	except:
+		Debug(9,"Can't test database file %s" % dbname)
+		db=False
+
 	return db
 
 
@@ -108,7 +122,9 @@ class dbstruct:
 		self.dbfile=''
 		self.recPrecBalance=10
 
-def dbstart(dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
+
+#def dbstart(dbname="/Users/amnon/Python/SRBactDB/SRBactDB.db"):
+def dbstart(dbname="db/SRBactDB.db"):
 	'''
 	start the database structure and connect to database
 	input:
@@ -410,7 +426,8 @@ def InitOntologyGraph(db,pv,field,ontohashname):
 	db.OntoGraph[field]['nodes']=nodes
 	db.OntoGraph[field]['sizes']=sizes
 	db.OntoGraph[field]['ndict']=ndict
-	db.OntoGraph[field]['nodepositions']=nx.graphviz_layout(G)
+#	db.OntoGraph[field]['nodepositions']=nx.graphviz_layout(G)
+	db.OntoGraph[field]['nodepositions']=graphviz_layout(G)
 	return db
 
 

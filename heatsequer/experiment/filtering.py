@@ -12,6 +12,7 @@ __version__ = "0.9"
 
 import heatsequer as hs
 
+from scipy import stats
 import numpy as np
 from pdb import set_trace as XXX
 
@@ -108,7 +109,7 @@ def filterorigreads(expdat,minreads,inplace=False):
 	return newexp
 
 
-def filtersamples(expdat,field,filtval,exact=True,exclude=False,numexpression=False):
+def filtersamples(expdat,field,filtval,exact=True,exclude=False,numexpression=False,shownumoutput=True):
 	"""
 	filter samples in experiment according to value in field
 	input:
@@ -123,6 +124,8 @@ def filtersamples(expdat,field,filtval,exact=True,exclude=False,numexpression=Fa
 		False to keep only matching samples, True to exclude matching samples
 	numexpression : bool
 		True if val is a python expression, False if just a value. For an expression assume value is the beggining of the line (i.e. '<=5')
+	shownumoutput : bool
+		True (default) to show number of samples remaining, False to not show
 	"""
 	params=locals()
 	if not isinstance(filtval,list):
@@ -157,7 +160,10 @@ def filtersamples(expdat,field,filtval,exact=True,exclude=False,numexpression=Fa
 		fstr+=" (exclude)"
 	newexp.filters.append(fstr)
 	hs.addcommand(newexp,"filtersamples",params=params,replaceparams={'expdat':expdat})
-	hs.Debug(6,'%d Samples left' % len(newexp.samples))
+	if shownumoutput:
+		hs.Debug(6,'%d Samples left' % len(newexp.samples))
+	else:
+		hs.Debug(1,'%d Samples left' % len(newexp.samples))
 	return newexp
 
 
@@ -510,4 +516,305 @@ def filterannotations(expdat,annotation,cdb,exclude=False):
 	newexp.filters.append('Filter annotations %s' % annotation)
 	hs.addcommand(newexp,"filterannotations",params=params,replaceparams={'expdat':expdat})
 	hs.Debug(6,'%d bacteria found' % len(keeplist))
+	return newexp
+
+
+def filtersimilarsamples(expdat,field,method='mean'):
+	"""
+	join similar samples into one sample (i.e. to remove samples of same individual)
+	input:
+	expdat : Experiment
+	field : string
+		Name of the field containing the values (for which similar values will be joined)
+	method : string
+		What to do with samples with similar value. options:
+		'mean' - replace with a sample containing the mean of the samples
+		'median'- replace with a sample containing the median of the samples
+		'random' - replace with a sinlge random sample out of these samples
+	output:
+	newexp : Experiment
+		like the input experiment but only one sample per unique value in field
+	"""
+	params=locals()
+
+	newexp=hs.copyexp(expdat)
+	uvals=hs.getfieldvals(expdat,field,ounique=True)
+	keep=[]
+	for cval in uvals:
+		cpos=hs.findsamples(expdat,field,cval)
+		if len(cpos)==1:
+			keep.append(cpos[0])
+			continue
+		if method=='random':
+			keep.append(cpos[np.random.randint(len(cpos))])
+			continue
+		# set the mapping file values
+		cmap=expdat.smap[expdat.samples[cpos[0]]]
+		for ccpos in cpos[1:]:
+			for cfield in cmap.keys():
+				if cmap[cfield]!=expdat.smap[expdat.samples[ccpos]][cfield]:
+					cmap[cfield]='NA'
+		if method=='mean':
+			cval=np.mean(expdat.data[:,cpos],axis=1)
+			newexp.data[:,cpos[0]]=cval
+			keep.append(cpos[0])
+		elif method=='median':
+			cval=np.median(expdat.data[:,cpos],axis=1)
+			newexp.data[:,cpos[0]]=cval
+			keep.append(cpos[0])
+		else:
+			hs.Debug(9,'method %s not supported' % method)
+			return False
+		newexp.smap[expdat.samples[cpos[0]]]=cmap
+	newexp=hs.reordersamples(newexp,keep)
+	newexp.filters.append('Filter similar samples field %s method %s' % (field,method))
+	hs.addcommand(newexp,"filtersimilarsamples",params=params,replaceparams={'expdat':expdat})
+	hs.Debug(6,'%d samples before filtering, %d after' % (len(expdat.samples),len(newexp.samples)))
+	return newexp
+
+
+def filterwave(expdat,field=False,numeric=True,minfold=2,minlen=3,step=1,direction='up',posloc='start'):
+	"""
+	filter bacteria, keeping only ones that show a consecutive region of samples with higher/lower mean than other samples
+	Done by scanning all windowlen/startpos options for each bacteria
+	input:
+	expdat : Experiment
+	field : string
+		The field to sort by or False to skip sorting
+	numeric : bool
+		For the sorting according to field (does not matter if field is False)
+	minfold : float
+		The minimal fold change for the window compared to the rest in order to keep
+	step : int
+		The skip between tested windows (to make it faster use a larger skip)
+	minlen : int
+		The minimal window len for over/under expression testing
+	direction : string
+		'both' - test both over and under expression in the window
+		'up' - only overexpressed
+		'down' - only underexpressed
+	posloc : string
+		The position to measure the beginning ('maxstart') or middle ('maxmid') of maximal wave
+		or 'gstart' to use beginning of first window with >=minfold change
+
+	output:
+	newexp : Experiment
+		The filtered experiment, sorted according to window start samples position
+	"""
+	params=locals()
+
+	# sort if needed
+	if field:
+		newexp=hs.sortsamples(expdat,field,numeric=numeric)
+	else:
+		newexp=hs.copyexp(expdat)
+
+	dat=newexp.data
+	dat[dat<1]=1
+	dat=np.log2(dat)
+	numsamples=len(newexp.samples)
+	numbact=len(newexp.seqs)
+	maxdiff=np.zeros([numbact])
+	maxpos=np.zeros([numbact])-1
+	maxlen=np.zeros([numbact])
+	for startpos in range(numsamples-minlen):
+		for cwin in np.arange(minlen,numsamples-startpos,step):
+			meanin=np.mean(dat[:,startpos:startpos+cwin],axis=1)
+			nowin=[]
+			if startpos>0:
+				nonwin=np.arange(startpos-1)
+			if startpos<numsamples:
+				nowin=np.hstack([nowin,np.arange(startpos,numsamples-1)])
+			nowin=nowin.astype(int)
+			meanout=np.mean(dat[:,nowin],axis=1)
+			cdiff=meanin-meanout
+			if direction=='both':
+				cdiff=np.abs(cdiff)
+			elif direction=='down':
+				cdiff=-cdiff
+			if posloc=='gstart':
+				usepos=(cdiff>=minfold) and (maxpos==-1)
+				maxpos[usepos]=startpos
+			if posloc=='start':
+				maxpos[cdiff>maxdiff]=startpos
+			elif posloc=='mid':
+				maxpos[cdiff>maxdiff]=startpos+int(cwin/2)
+			else:
+				hs.Debug('posloc nut supported %s' % posloc)
+				return False
+			maxlen[cdiff>maxdiff]=cwin
+			maxdiff=np.maximum(maxdiff,cdiff)
+
+	keep=np.where(maxdiff>=minfold)[0]
+	keeppos=maxpos[keep]
+	si=np.argsort(keeppos)
+	keep=keep[si]
+	for ci in keep:
+		hs.Debug(6,'bacteria %s startpos %d len %d diff %f' % (newexp.tax[ci],maxpos[ci],maxlen[ci],maxdiff[ci]))
+	newexp=hs.reorderbacteria(newexp,keep)
+	newexp.filters.append('Filter wave field=%s minlen=%d' % (field,minlen))
+	hs.addcommand(newexp,"filterwave",params=params,replaceparams={'expdat':expdat})
+	hs.Debug(6,'%d samples before filtering, %d after' % (len(expdat.samples),len(newexp.samples)))
+	return newexp
+
+
+def filtern(expdat):
+	"""
+	delete sequences containing "N" from experiment and renormalize
+	input:
+	expdat : Experiment
+	output:
+	newexp : Experiment
+		experiment without sequences containing "N"
+	"""
+	params=locals()
+
+	keeplist=[]
+	for idx,cseq in enumerate(expdat.seqs):
+		if "N" in cseq:
+			continue
+		if "n" in cseq:
+			continue
+		keeplist.append(idx)
+	newexp=hs.reorderbacteria(expdat,keeplist)
+	newexp=hs.normalizereads(newexp)
+	newexp.filters.append('Filter sequences containing N')
+	hs.addcommand(newexp,"filtern",params=params,replaceparams={'expdat':expdat})
+	hs.Debug(6,'%d sequences before filtering, %d after' % (len(expdat.seqs),len(newexp.seqs)))
+	return newexp
+
+
+def cleantaxonomy(expdat,mitochondria=True,chloroplast=True,bacteria=True,unknown=True):
+	"""
+	remove common non-16s sequences from the experiment and renormalize
+
+	input:
+	expdat : Experiment
+	mitochondria : bool
+		remove mitochondrial sequences
+	chloroplast : bool
+		remove chloroplast sequences
+	bacteria : bool
+		remove sequences only identified as "Bacteria" (no finer identification)
+	unknown : bool
+		remove unknown sequences
+
+	output:
+	newexp : Experiment
+		the renormalized experiment without these bacteria
+	"""
+	params=locals()
+
+	newexp=hs.copyexp(expdat)
+	if mitochondria:
+		newexp=hs.filtertaxonomy(newexp,'mitochondria',exclude=True)
+	if chloroplast:
+		newexp=hs.filtertaxonomy(newexp,'Streptophyta',exclude=True)
+		newexp=hs.filtertaxonomy(newexp,'Chloroplast',exclude=True)
+	if unknown:
+		newexp=hs.filtertaxonomy(newexp,'Unknown',exclude=True)
+		newexp=hs.filtertaxonomy(newexp,'Unclassified;',exclude=True,exact=True)
+	if bacteria:
+		newexp=hs.filtertaxonomy(newexp,'Bacteria;',exclude=True,exact=True)
+	newexp=hs.normalizereads(newexp)
+	newexp.filters.append('Clean Taxonomy (remove mitochondria etc.)')
+	hs.addcommand(newexp,"cleantaxonomy",params=params,replaceparams={'expdat':expdat})
+	hs.Debug(6,'%d sequences before filtering, %d after' % (len(expdat.seqs),len(newexp.seqs)))
+	return newexp
+
+
+
+def filterfieldwave(expdat,field,val1,val2=False,mineffect=1,method='mean',uselog=True):
+	"""
+	find all sequences which show an effect size of at least mineffect between val1 and val2 samples in field
+	no statistical significance testing is performed
+
+	input:
+	expdat : Experiment
+	field : string
+		name of field to use for group separation
+	val1 : string
+		value in field for group1
+	val2 : string
+		value in field for group2 or False for all the other samples except val1
+	mineffect : float
+		min difference between groups per OTU in order to keep
+	method: string
+		'ranksum'
+	uselog : bool
+		True to log transform the data
+
+	output:
+	newexp : Experiment
+		only with sequences showing a mineffect difference
+	"""
+	params=locals()
+
+	numseqs=len(expdat.seqs)
+	numsamples=len(expdat.samples)
+	dat=expdat.data
+	if uselog:
+		dat[dat<1]=1
+		dat=np.log2(dat)
+	if method=='ranksum':
+		for idx in range(numseqs):
+			dat[idx,:]=stats.rankdata(dat[idx,:])
+
+	pos1=hs.findsamples(expdat,field,val1)
+	if val2:
+		pos2=hs.findsamples(expdat,field,val2)
+	else:
+		pos2=np.setdiff1d(np.arange(numsamples),pos1,assume_unique=True)
+
+	outpos=[]
+	odif=[]
+	for idx in range(numseqs):
+		cdif=np.mean(dat[idx,pos1])-np.mean(dat[idx,pos2])
+		if abs(cdif)>=mineffect:
+			outpos.append(idx)
+			odif.append(cdif)
+
+	si=np.argsort(odif)
+	outpos=hs.reorder(outpos,si)
+	newexp=hs.reorderbacteria(expdat,outpos)
+	newexp.filters.append('filterfieldwave field %s val1 %s val2 %s' % (field,val1,val2))
+	hs.addcommand(newexp,"filterfieldwave",params=params,replaceparams={'expdat':expdat})
+	return newexp
+
+
+def filterwinperid(expdat,idfield,field,val1,val2,mineffect=1):
+	"""
+	do filterfieldwave on each individual (based on idfield) and join the resulting bacteria
+	"""
+	params=locals()
+
+	iseqs=[]
+	uids=hs.getfieldvals(expdat,idfield,ounique=True)
+	for cid in uids:
+		cexp=hs.filtersamples(expdat,idfield,cid)
+		texp=hs.filterfieldwave(cexp,field,val1,val2,mineffect=mineffect)
+		iseqs+=texp.seqs
+	iseqs=list(set(iseqs))
+	newexp=hs.filterseqs(expdat,iseqs)
+	return newexp
+
+
+def filternans(expdat,minpresence):
+	"""
+	filter an experiment containing nans in the table, keeping only bacteria with at least minpresence non-nan values
+	input:
+	expdat : Experiment
+	minpresence: int
+		minimal number of non-nan samples (keep only if >=)
+	output:
+	newexp : Experiment
+	"""
+	params=locals()
+
+	numok=np.sum(np.isfinite(expdat.data),axis=1)
+	keep=np.where(numok>=minpresence)[0]
+	print(len(keep))
+	newexp=hs.reorderbacteria(expdat,keep)
+	newexp.filters.append('filternans keep only with >=%d non nan reads' % minpresence)
+	hs.addcommand(newexp,"filternans",params=params,replaceparams={'expdat':expdat})
 	return newexp

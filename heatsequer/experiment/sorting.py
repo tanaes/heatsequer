@@ -14,7 +14,7 @@ import heatsequer as hs
 import numpy as np
 import copy
 from sklearn.preprocessing import scale
-from scipy import cluster
+from scipy import cluster,spatial,stats
 from scipy import spatial
 
 
@@ -137,7 +137,7 @@ def sortsamples(exp,field,numeric=False,logit=True):
 	return newexp
 
 
-def sortbyfreq(expdat,field=False,value=False,exact=False,exclude=False,logscale=True):
+def sortbyfreq(expdat,field=False,value=False,exact=False,exclude=False,logscale=True,useabs=False):
 	"""
 	sort bacteria in experiment according to frequency
 	sorting is performed based on a subset of samples (field/val/exact) and then
@@ -154,6 +154,8 @@ def sortbyfreq(expdat,field=False,value=False,exact=False,exclude=False,logscale
 		True to sort on all samples except the field/value ones, False to sort only on field/value samples (default=False)
 	logscale : bool
 		True (default) to use log2 transform for frequencies before mean and sorting, False to use original values
+	useabs : bool
+		True to sort by absolute value of freq, False (default) to sort by freq
 
 	output:
 	newexp : Experiment
@@ -168,13 +170,17 @@ def sortbyfreq(expdat,field=False,value=False,exact=False,exclude=False,logscale
 	if logscale:
 		texp.data[texp.data<2]=2
 		texp.data=np.log2(texp.data)
-	meanvals=np.mean(texp.data,axis=1)
+	if useabs:
+		meanvals=np.mean(np.abs(texp.data),axis=1)
+	else:
+		meanvals=np.mean(texp.data,axis=1)
 	svals,sidx=hs.isort(meanvals)
 
 	newexp=hs.reorderbacteria(expdat,sidx)
 	newexp.filters.append("sort by freq field=%s value=%s" % (field,value))
 	hs.addcommand(newexp,"sortbyfreq",params=params,replaceparams={'expdat':expdat})
 	return newexp
+
 
 def sortbyvariance(expdat,field=False,value=False,exact=False,norm=False):
 	"""
@@ -278,4 +284,91 @@ def sortcorrelation(expdat,method='all'):
 	newexp=hs.reorderbacteria(expdat,order)
 	newexp.filters.append("correlation sort")
 	hs.addcommand(newexp,"sortcorrelation",params=params,replaceparams={'expdat':expdat})
+	return newexp
+
+
+############
+# add sort by center of mass (for time/1d series)
+###########
+
+
+def sortbycentermass(expdat,field=False,numeric=True,uselog=True):
+	"""
+	sort bacteria in the experiment according to a 1d gradient by calculating the center of mass
+	input:
+	expdat
+	field : string
+		the name of the field to sort by or False to skip sorting
+	numeric : bool
+		True if the sort field is numeric (ignored if no sort field)
+	uselog : bool
+		True to log transform the data before mass center calculation
+	output:
+	newexp - the experiment with sorted bacteria
+	"""
+	params=locals()
+
+	if field:
+		newexp=hs.sortsamples(expdat,field,numeric=numeric)
+	else:
+		newexp=hs.copyexp(expdat)
+	dat=newexp.data
+	if uselog:
+		dat[dat<1]=1
+		dat=np.log2(dat)
+	cm=[]
+	multpos=np.arange(len(newexp.samples))
+	for cseqind in range(len(newexp.seqs)):
+		cm.append(np.dot(dat[cseqind,:],multpos)/np.sum(dat[cseqind,:]))
+	sv,si=hs.isort(cm)
+	newexp=hs.reorderbacteria(expdat,si)
+	newexp.filters.append("sort by center of mass field=%s, uselog=%s" % (field,uselog))
+	hs.addcommand(newexp,"sortbycentermass",params=params,replaceparams={'expdat':expdat})
+	return newexp
+
+
+
+def sortbysign(expdat,field=False,value='',exclude=False,exact=True,maxfval=0.2):
+	"""
+	sort bacteria in the experiment based on the number of positive/negative samples
+	(ignoring nans)
+	input:
+	expdat : Experiment
+	field,value,exclude,exact : name of field and value of field in order to sort based only on these samples
+		or field=False for all samples (default)
+	maxfval - the maximal f-value
+
+	output:
+	newexp : Experiment
+		sorted by difference between positive/negative
+	"""
+	params=locals()
+
+	if field:
+		texp=hs.filtersamples(expdat,field,value,exact=exact,exclude=exclude)
+	else:
+		texp=hs.copyexp(expdat)
+
+	texp.data=np.sign(texp.data)
+	numpos=np.nansum(texp.data>0,axis=1)
+	numneg=np.nansum(texp.data<0,axis=1)
+	pval=np.ones(len(numpos))
+	for cpos in range(len(pval)):
+		if numpos[cpos]==0 and numneg[cpos]==0:
+			continue
+		pval1=stats.binom.cdf(numpos[cpos],numpos[cpos]+numneg[cpos],0.5)
+		pval2=stats.binom.cdf(numneg[cpos],numpos[cpos]+numneg[cpos],0.5)
+		pval[cpos]=np.min([pval1,pval2])
+
+	signs=np.nanmean(texp.data,axis=1)
+
+	fval=hs.fdr(pval)
+	keep=np.where(np.array(fval)<=maxfval)[0]
+	newexp=hs.reorderbacteria(expdat,keep)
+	signs=signs[keep]
+	si=np.argsort(signs)
+
+	newexp=hs.reorderbacteria(newexp,si)
+	newexp.filters.append("sort by sign field %s max-f-val %f" % (field,maxfval))
+	hs.addcommand(newexp,"sortbysign",params=params,replaceparams={'expdat':expdat})
 	return newexp
